@@ -1,34 +1,40 @@
 #include <unistd.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <dirent.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <stdlib.h>
 
 void structDir(char *dir, int out, int depth);
 int filewrite(char* filename, int out, bool isDir, int depth, long size);
-int fileread(char* filename);
+
+int fileread_fstep(char* filename, char *sdir);
+void fileread(char* filename, int in, int depth);
+int createF(int in);
 
 int main(int argc, char *argv[])			// ./archivator -d /home/... -o ./lab1.arch			путь к директории - входной аргумент -d флаг
 {											// ./archivator -f ./lab1.arch -d /home/...	
 	// обработка аргументов
-	if (argv[1] = "-d")
+	//printf(" argv[1] = %s\n", argv[1]); 
+	if (argv[1][1] == 'd')
 	{
 			char *sdir = argv[2];		//путь к директории
 			char *outf = argv[4];
 			printf("Directory : %s\n", sdir);
 			//printdir("/home", 0);
-			int out = open(outf, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
+			int out = open(outf, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR);
 			structDir(sdir, out, 0);
 	
-	}	if (argv[1] = "-f")
+	}	if (argv[1][1] == 'f')
 		{
 			char *sdir = argv[4];		
 			char *inf = argv[2];
 			printf("File : %s\n", inf);
 			//printdir("/home", 0);
-			fileread(inf);
+			fileread_fstep(inf, sdir);
 
 		}	
 
@@ -45,12 +51,14 @@ void structDir(char *dir, int out, int depth)		// проход по директ
 
 	/* открывает каталог и формирует поток каталога. Возвращает указатель на структуру DIR, 
 	которая будет использоваться для чтения элементов каталога*/
-	if((dp = opendir(dir) == NULL)
+	
+	if((dp = opendir(dir)) == NULL)
 	{
 		//вывод в заданный файловый поток
 		fprintf(stderr, "cannot open directory: %s\n", dir);
 		return;
 	}
+	printf("trying to open dir\n");
 	chdir(dir);		//перемешение в директорию
 	while((entry = readdir(dp)) != NULL)
 	{
@@ -58,15 +66,16 @@ void structDir(char *dir, int out, int depth)		// проход по директ
 		if(S_ISDIR(statbuf.st_mode))		//проверка на каталог
 		{
 			//Находит каталог, но игнорирует . и .. 
-			if(strcmp(".", entry->d_name) == 0 || strcmp("..", enty->d_name) == 0)
+			if(strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
 			continue;
 			isDir = true;
 			///printf("%*s%s/\n", depth, "", entry->d_name);
-			filewrite(entry->d_name, out, isDir, depth, sizeof(entry))
+			filewrite(entry->d_name, out, isDir, depth, statbuf.st_size);
 			//Рекурсивный вызов 
 			structDir(entry->d_name, out, depth + 1);
-		} else filewrite(entry->d_name, out, isDir, depth, sizeof(entry))	// запись файла
+		} else filewrite(entry->d_name, out, false, depth, statbuf.st_size);	// запись файла
 	}
+	
 	chdir("..");	//возвращение вверх по дереву каталогов 
 	closedir(dp);	// гарантирует, что кол-во открытых потоков каталогов не больше необходимого
 }
@@ -92,14 +101,15 @@ int filewrite(char* filename, int out, bool isDir, int depth, long size)
         type = 'd';
 
 	// out ~ fildes - файловый дескриптор 
+	write(out, &depth, sizeof(depth));
+    printf("depth = %d\n", depth);
+
     write(out, &type, 1); 				//запись одного байта 
     printf("type = %c\n", type);
-    write(out, &depth, sizeof(depth));
-    printf("depth = %d\n", depth);
 
     int namesize = strlen(filename);				// длина имени файла
     write(out, &namesize, sizeof(namesize)); 		//запись длины имени файла??
-    write(out, filename, namesize);					// запись имени файла
+    write(out, filename, namesize + 1);					// запись имени файла
 
 		//lstat(filename, &statbuf);		//Время последнего изменения 
 		//write(out, statbuf.st_mtime, sizeof(statbuf.st_mtime));
@@ -113,7 +123,7 @@ int filewrite(char* filename, int out, bool isDir, int depth, long size)
 	{
 		// запись содержимого файла (не директория)
         long sum = 0;
-        while((nread = read(in, buf, sizeof(buf)) > 0)) // считывается, пока не конец файла
+        while((nread = read(in, buf, sizeof(buf))) > 0) // считывается, пока не конец файла
 		{
             write(out, buf, nread);  //запись в аут nread байт, считанных в буфер
             sum += nread; //подсчет общего числа записанных байт
@@ -124,41 +134,126 @@ int filewrite(char* filename, int out, bool isDir, int depth, long size)
 	close(in);
     printf("\n------------------------------------\n");
 }
-int fileread(char* filename)
+int fileread_fstep(char* filename, char *sdir)
 {
-	printf("trying to read a file from archive\n");
+	printf("trying to open input file\n");
+	int in = open(filename, O_RDONLY); // открытие только для чтения
+	if(in == -1)
+    printf("failed to open a input file!\n");
+ 	chdir(sdir);
+	fileread("arch", in, -1);
+
+}
+void fileread(char* filename, int in, int depth)
+{
+	
     char buf[1024];
+	bool ret = false;
 	char type;
 	char* outfile;
-    int nread, depth, namesize, dir;
-	long int size, sum;
-    int in = open(filename, O_RDONLY); // открытие только для чтения
-	    if(in == -1)
-        printf("failed to open a file!\n");
+	
+    int dir, dep, nread, namesize;
+	long int size;
+	 
+	DIR *dp;
+	
+		if(mkdir(filename, S_IRWXU|S_IRWXG|S_IRWXO) == -1)		// create dir
+			fprintf(stderr, "cannot create directory: %s\n", filename);
+				
+		if((dp = opendir(filename)) == NULL)
+		{
+			//вывод в заданный файловый поток
+			fprintf(stderr, "cannot open directory: %s\n", filename);
+			return;
+		}
+		dir = chdir(filename);
+		getcwd(buf, sizeof(buf));
+		//if (buf != filename)
+		fprintf(stderr, "Chdir return %d! Current directory: %s\n", dir, buf);
+		depth++;
+	
 
-	dir = mkdir(filename); 				// create dir
-	if (nread = read(in, &type, 1) != 1)
+ while (true) 
+ {
+	if (!ret) read(in, &dep, sizeof(int));
+
+	if (dep != depth) 
+	{
+		fprintf(stderr, "current depth = %d filedep = %d\n", depth, dep);
+		break;
+	}
+	nread = read(in, &type, 1);
+	if(nread == 0) return;	// считывается, пока не конец файла
+	if(nread == -1) 
 	printf("failed to read a file!\n");
-
+	
+	printf("type = %c\n", type);
 	if(type == 'f')
 	{
-		read(in, &depth, sizeof(int));
+		createF(in);
+		ret = false;
+		//fileread(outfile, in, depth, 'f');
+	} 
+
+	if (type == 'd')
+	{
+		
 		read(in, &namesize, sizeof(int));		// считан размер имени файла
-		read(in, outfile, namesize);			// считано имя файла
+		char* outd = (char*)malloc(namesize+1);
+		read(in, outd, namesize+1);			// считано имя файла
+		
 		read(in, &size, sizeof(long int));
+		fileread(outd, in, depth);
+		ret = true;
+		
+	}
+ }
 
-		int out = open(outfile, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR);
+	dir = chdir("..");	//возвращение вверх по дереву каталогов
+	getcwd(buf, sizeof(buf));
+		//if (buf != filename)
+	fprintf(stderr, "Chdir return %d! Current directory: %s\n", dir, buf); 
+	closedir(dp);	// гарантирует, что кол-во открытых потоков каталогов не больше необходимого
+}
+int createF(int in)
+{
+	//char* outfile;
+	char buf[1024];
+	int nread, namesize, dir;
+	long int size, sum = 0;
+	printf("trying to read info!\n");
+		//read(in, &depth, sizeof(depth));
+		//printf("depth = %d\n", depth);
+		read(in, &namesize, sizeof(namesize));		// считан размер имени файла
+		printf("namesize = %d\n", namesize);
+
+		char* outfile = (char*)malloc(namesize+1);
+		read(in, outfile, namesize+1);			// считано имя файла
+		printf("filename= %s\n", outfile);
+		read(in, &size, sizeof(long int));
+		printf("size = %ld\n", size);
+
+		printf("trying to open a file %s!\n", outfile);
+		int out = open(outfile, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 		if(out == -1)
-        printf("failed to open a file!\n");
-
+		{
+			printf("failed to open a file!\n");
+			//exit(-3);
+			return -3;
+		}
+        	
+		
 		while(sum != size) 
 		{
-			nread = read(in, buf, sizeof(buf));
-            write(out, buf, nread);  //запись в аут nread байт, считанных в буфер
+			if((size - sum) < sizeof(buf))
+			{
+				nread = read(in, buf, size - sum);
+            	
+			} else nread = read(in, buf, sizeof(buf));
+            		
+			write(out, buf, nread);  //запись в аут nread байт, считанных в буфер
             sum += nread; //подсчет общего числа записанных байт
         }
         printf("successful writing of %ld bytes\n", sum);
 		close(out);
-	}
-
 }
