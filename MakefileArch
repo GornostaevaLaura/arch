@@ -1,0 +1,2 @@
+all:
+	 ./archivator -d ~/Рабочий\ стол/Проекты/lab1/EDir -o ./lab1.arch
