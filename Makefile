@@ -1,3 +1,3 @@
 all:
-	gcc -o mai ./h.c
+	gcc -o archivator -fsanitize=address ./archivator.c
 	
