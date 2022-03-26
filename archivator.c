@@ -27,6 +27,7 @@ int main(int argc, char *argv[])			// ./archivator -d /home/... -o ./lab1.arch		
 			//printdir("/home", 0);
 			int out = open(outf, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR);
 			structDir(sdir, out, 0);
+			close(out);
 	
 	}	if (argv[1][1] == 'f')
 		{
@@ -39,6 +40,7 @@ int main(int argc, char *argv[])			// ./archivator -d /home/... -o ./lab1.arch		
 		}	
 
 	printf("done.\n");
+	
 	exit(0);
 }
 
@@ -88,7 +90,7 @@ int filewrite(char* filename, int out, bool isDir, int depth, long size)
     char buf[1024];
     int nread;
     int in = open(filename, O_RDONLY); // открытие только для чтения
-	// in теперь дескриптор файла?
+	// in теперь дескриптор файла
 
     if(in == -1)
         printf("failed to open a file!\n");
@@ -142,6 +144,7 @@ int fileread_fstep(char* filename, char *sdir)
     printf("failed to open a input file!\n");
  	chdir(sdir);
 	fileread("arch", in, -1);
+	close(in);
 
 }
 void fileread(char* filename, int in, int depth)
@@ -175,15 +178,18 @@ void fileread(char* filename, int in, int depth)
 
  while (true) 
  {
-	if (!ret) read(in, &dep, sizeof(int));
-
+	if (!ret) 
+	{
+		nread = read(in, &dep, sizeof(int));
+		if(nread == 0) return;	// считывается, пока не конец файла
+	}
 	if (dep != depth) 
 	{
 		fprintf(stderr, "current depth = %d filedep = %d\n", depth, dep);
 		break;
 	}
 	nread = read(in, &type, 1);
-	if(nread == 0) return;	// считывается, пока не конец файла
+	//if(nread == 0) return;	// считывается, пока не конец файла
 	if(nread == -1) 
 	printf("failed to read a file!\n");
 	
@@ -205,15 +211,17 @@ void fileread(char* filename, int in, int depth)
 		read(in, &size, sizeof(long int));
 		fileread(outd, in, depth);
 		ret = true;
-		
+		free(outd);
 	}
  }
 
+	
 	dir = chdir("..");	//возвращение вверх по дереву каталогов
 	getcwd(buf, sizeof(buf));
 		//if (buf != filename)
 	fprintf(stderr, "Chdir return %d! Current directory: %s\n", dir, buf); 
 	closedir(dp);	// гарантирует, что кол-во открытых потоков каталогов не больше необходимого
+	
 }
 int createF(int in)
 {
@@ -255,5 +263,6 @@ int createF(int in)
             sum += nread; //подсчет общего числа записанных байт
         }
         printf("successful writing of %ld bytes\n", sum);
+		free(outfile);
 		close(out);
 }
