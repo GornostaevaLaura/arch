@@ -163,12 +163,12 @@ void fileread(char* filename, int in, int depth)
 		if(mkdir(filename, S_IRWXU|S_IRWXG|S_IRWXO) == -1)		// create dir
 			fprintf(stderr, "cannot create directory: %s\n", filename);
 				
-		if((dp = opendir(filename)) == NULL)
+		/*if((dp = opendir(filename)) == NULL)
 		{
 			//вывод в заданный файловый поток
 			fprintf(stderr, "cannot open directory: %s\n", filename);
 			return;
-		}
+		}*/
 		dir = chdir(filename);
 		getcwd(buf, sizeof(buf));
 		//if (buf != filename)
@@ -220,7 +220,7 @@ void fileread(char* filename, int in, int depth)
 	getcwd(buf, sizeof(buf));
 		//if (buf != filename)
 	fprintf(stderr, "Chdir return %d! Current directory: %s\n", dir, buf); 
-	closedir(dp);	// гарантирует, что кол-во открытых потоков каталогов не больше необходимого
+	//closedir(dp);	// гарантирует, что кол-во открытых потоков каталогов не больше необходимого
 	
 }
 int createF(int in)
